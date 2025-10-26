@@ -1,6 +1,6 @@
 # UWAL | Pong Game
 
-> Classic Pong Game in [UWAL](https://github.com/UstymUkhman/uwal) and [WebGPU](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API).
+> Classic Pong Game in [UWAL](https://github.com/UstymUkhman/uwal) and [WebGPU](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API)
 
 <!-- [![Pong Game]()]() -->
 
