@@ -1,60 +1,120 @@
 import * as UWAL from "uwal";
-
-const NetShader = /* wgsl */`
-@vertex fn textureVertex(
-    @location(0) position: vec2f,
-    @location(1) translation: f32
-) -> @builtin(position) vec4f
-{
-    let clipSpace = GetVertexClipSpace(position).xy;
-    return vec4f(clipSpace + vec2f(0, translation), 0, 1);
-}`;
+import Font from "/PressStart2P.json?url";
 
 const Renderer: UWAL.Renderer = new (await UWAL.Device.Renderer(
     document.getElementById("game") as HTMLCanvasElement
 ));
 
-const Camera = new UWAL.Camera2D();
-Camera.Size = Renderer.CanvasSize;
-const radius = 8, dashes = 8;
+/* const { colorAttachments } = */ Renderer.CreatePassDescriptor(
+    Renderer.CreateColorAttachment(),
+    Renderer.CreateDepthStencilAttachment()
+);
 
-const NetPipeline = new Renderer.Pipeline();
+// const { value: Background } =
+//     colorAttachments[Symbol.iterator]().next();
+
+// Background.clearValue = new UWAL.Color(0x800000 /* 0x008000 */).rgba;
+
 Renderer.SetCanvasSize(innerWidth, innerHeight);
+const ShapePipeline = new Renderer.Pipeline();
 
-const Geometry = new UWAL.Geometries.Shape({ radius });
-const module = NetPipeline.CreateShaderModule([UWAL.Shaders.Shape, NetShader]);
+const [width, height] = Renderer.CanvasSize;
+const Camera = new UWAL.Camera2D(Renderer);
 
-const { buffer: translationBuffer, layout: translationLayout } =
-    NetPipeline.CreateVertexBuffer("translation", dashes, "instance", "textureVertex");
+const center = [width / 2, height / 2];
+const Scene = new UWAL.Scene();
+Scene.AddCamera(Camera);
 
-await Renderer.AddPipeline(NetPipeline, {
-    fragment: NetPipeline.CreateFragmentState(module),
-    vertex: NetPipeline.CreateVertexState(module, [
-        Geometry.GetPositionBufferLayout(NetPipeline), translationLayout
-    ], void 0, "textureVertex")
-});
+/* Net */ {
+    const dots = 32,
+    NetShader = /* wgsl */`
+    @vertex fn textureVertex(
+        @location(0) position: vec2f,
+        @location(1) translation: f32
+    ) -> @builtin(position) vec4f
+    {
+        let clipSpace = GetVertexClipSpace(position).xy;
+        return vec4f(clipSpace + vec2f(0, translation), 0, 1);
+    }`;
 
-const translation = new Float32Array(dashes);
-const Net = new UWAL.Shape(Geometry);
-Net.SetRenderPipeline(NetPipeline);
+    const NetPipeline = new Renderer.Pipeline();
+    const Geometry = new UWAL.Geometries.Shape({ radius: 8 });
+    const module = NetPipeline.CreateShaderModule([UWAL.Shaders.Shape, NetShader]);
 
-Net.Position = [150, 65];
-Net.Scaling  = [0.5, 1.0];
-Net.Rotation = Math.PI / 4;
+    const { buffer, layout } = NetPipeline.CreateVertexBuffer(
+        "translation", dots, "instance", "textureVertex"
+    );
 
-for (let d = dashes; d--; )
-    translation.set([d / dashes * 2 - 1], d);
+    await Renderer.AddPipeline(NetPipeline, {
+        depthStencil: ShapePipeline.CreateDepthStencilState(void 0, false),
+        fragment: NetPipeline.CreateFragmentState(module),
+        vertex: NetPipeline.CreateVertexState(module, [
+            Geometry.GetPositionBufferLayout(NetPipeline), layout
+        ], void 0, "textureVertex")
+    });
 
-NetPipeline.AddVertexBuffers(translationBuffer);
-Net.UpdateProjectionMatrix(Camera.ProjectionMatrix);
-NetPipeline.SetDrawParams(Geometry.Vertices, dashes);
-NetPipeline.WriteBuffer(translationBuffer, translation);
+    const translation = new Float32Array(dots);
+    const Net = new UWAL.Shape(Geometry);
+    Net.SetRenderPipeline(NetPipeline);
 
-// setTimeout(() => {
-//     const { colorAttachments } = Renderer.RenderPassDescriptor;
-//     const { value } = colorAttachments[Symbol.iterator]().next();
-//     value.clearValue = new UWAL.Color(0x800000 /* 0x008000 */).rgba;
-//     Renderer.Render();
-// }, 1e3);
+    Net.Position = [center[0], center[1] - 15];
+    Net.Rotation = Math.PI / 4;
+    Scene.Add(Net);
 
-Renderer.Render();
+    for (let d = dots; d--; )
+        translation.set([d / dots * 2 - 1], d);
+
+    NetPipeline.AddVertexBuffers(buffer);
+    NetPipeline.WriteBuffer(buffer, translation);
+    Geometry.SetDrawParams(Geometry.Vertices, dots);
+    Net.UpdateProjectionMatrix(Camera.ProjectionMatrix);
+}
+
+/* Ball */ {
+    const module = ShapePipeline.CreateShaderModule(UWAL.Shaders.Shape);
+    const BallGeometry = new UWAL.Geometries.Shape({ segments: 32, radius: 16 });
+
+    await Renderer.AddPipeline(ShapePipeline, {
+        depthStencil: ShapePipeline.CreateDepthStencilState(void 0, false),
+        fragment: ShapePipeline.CreateFragmentState(module),
+        vertex: ShapePipeline.CreateVertexState(module,
+            BallGeometry.GetPositionBufferLayout(ShapePipeline)
+        )
+    });
+
+    const Ball = new UWAL.Shape(BallGeometry);
+    Ball.SetRenderPipeline(ShapePipeline);
+
+    Ball.Position = center;
+    Scene.Add(Ball);
+}
+
+/* Players */ {
+
+}
+
+/* Score */ {
+    const P1Score = new UWAL.MSDFText();
+    const P2Score = new UWAL.MSDFText();
+
+    const Camera = new UWAL.PerspectiveCamera();
+
+    await P1Score.CreateRenderPipeline(Renderer);
+    await P2Score.CreateRenderPipeline(Renderer);
+
+    const p1ScoreBuffer = P1Score.Write("0", await P1Score.LoadFont(Font), 0xffffff);
+    const p2ScoreBuffer = P2Score.Write("0", await P2Score.LoadFont(Font), 0xffffff);
+
+    const p1position = UWAL.MathUtils.Mat4.translation([width / -640, 1.6, -4]);
+    const p2position = UWAL.MathUtils.Mat4.translation([width /  928, 1.6, -4]);
+
+    P1Score.SetTransform(p1position, p1ScoreBuffer);
+    P2Score.SetTransform(p2position, p2ScoreBuffer);
+
+    P1Score.UpdatePerspective(Camera);
+    P2Score.UpdatePerspective(Camera);
+
+    Renderer.Render(false);
+}
+
+Renderer.Render(Scene);
