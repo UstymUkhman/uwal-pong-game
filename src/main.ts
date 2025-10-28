@@ -10,13 +10,12 @@ const Renderer: UWAL.Renderer = new (await UWAL.Device.Renderer(
     Renderer.CreateDepthStencilAttachment()
 );
 
-// const { value: Background } =
-//     colorAttachments[Symbol.iterator]().next();
-
-// Background.clearValue = new UWAL.Color(0x800000 /* 0x008000 */).rgba;
-
-Renderer.SetCanvasSize(innerWidth, innerHeight);
 const ShapePipeline = new Renderer.Pipeline();
+Renderer.SetCanvasSize(innerWidth - 64, innerHeight - 24);
+
+const shapeModule = ShapePipeline.CreateShaderModule(UWAL.Shaders.Shape);
+// const { value: Background } = colorAttachments[Symbol.iterator]().next();
+// Background.clearValue = new UWAL.Color(0x800000 /* 0x008000 */).rgba;
 
 const [width, height] = Renderer.CanvasSize;
 const Camera = new UWAL.Camera2D(Renderer);
@@ -71,13 +70,12 @@ Scene.AddCamera(Camera);
 }
 
 /* Ball */ {
-    const module = ShapePipeline.CreateShaderModule(UWAL.Shaders.Shape);
     const BallGeometry = new UWAL.Geometries.Shape({ segments: 32, radius: 16 });
 
     await Renderer.AddPipeline(ShapePipeline, {
         depthStencil: ShapePipeline.CreateDepthStencilState(void 0, false),
-        fragment: ShapePipeline.CreateFragmentState(module),
-        vertex: ShapePipeline.CreateVertexState(module,
+        fragment: ShapePipeline.CreateFragmentState(shapeModule),
+        vertex: ShapePipeline.CreateVertexState(shapeModule,
             BallGeometry.GetPositionBufferLayout(ShapePipeline)
         )
     });
@@ -90,31 +88,85 @@ Scene.AddCamera(Camera);
 }
 
 /* Players */ {
+    const PlayerGeometry = new UWAL.Geometries.Shape({ radius: height / 8 });
+    const offset = Renderer.DevicePixelRatio * 64;
 
+    const Player1 = new UWAL.Shape(PlayerGeometry);
+    const Player2 = new UWAL.Shape(PlayerGeometry);
+
+    Player1.Position = [      - offset, center[1]];
+    Player2.Position = [width + offset, center[1]];
+
+    Player1.SetRenderPipeline(ShapePipeline);
+    Player2.SetRenderPipeline(ShapePipeline);
+
+    Player1.Rotation = Math.PI / 4;
+    Player2.Rotation = Math.PI / 4;
+
+    Scene.Add(Player1);
+    Scene.Add(Player2);
 }
+
+let P1ScorePipeline: UWAL.RenderPipeline, p1ScoreBuffer: GPUBuffer;
+let P2ScorePipeline: UWAL.RenderPipeline, p2ScoreBuffer: GPUBuffer;
+
+let scoreBufferOffset = Float32Array.BYTES_PER_ELEMENT * 6 + 2;
+scoreBufferOffset *= Float32Array.BYTES_PER_ELEMENT;
+
+const Perspective = new UWAL.PerspectiveCamera();
+const scoreData = Float32Array.from([12, 12]);
 
 /* Score */ {
     const P1Score = new UWAL.MSDFText();
     const P2Score = new UWAL.MSDFText();
 
-    const Camera = new UWAL.PerspectiveCamera();
+    P1ScorePipeline = await P1Score.CreateRenderPipeline(Renderer);
+    P2ScorePipeline = await P2Score.CreateRenderPipeline(Renderer);
 
-    await P1Score.CreateRenderPipeline(Renderer);
-    await P2Score.CreateRenderPipeline(Renderer);
+    p1ScoreBuffer = P1Score.Write("0", await P1Score.LoadFont(Font), 0xffffff);
+    p2ScoreBuffer = P2Score.Write("0", await P2Score.LoadFont(Font), 0xffffff);
 
-    const p1ScoreBuffer = P1Score.Write("0", await P1Score.LoadFont(Font), 0xffffff);
-    const p2ScoreBuffer = P2Score.Write("0", await P2Score.LoadFont(Font), 0xffffff);
+    const p1Position = UWAL.MathUtils.Mat4.translation([width / -640, 1.6, -4]);
+    const p2Position = UWAL.MathUtils.Mat4.translation([width /  832, 1.6, -4]);
 
-    const p1position = UWAL.MathUtils.Mat4.translation([width / -640, 1.6, -4]);
-    const p2position = UWAL.MathUtils.Mat4.translation([width /  928, 1.6, -4]);
+    P1Score.SetTransform(p1Position, p1ScoreBuffer);
+    P2Score.SetTransform(p2Position, p2ScoreBuffer);
 
-    P1Score.SetTransform(p1position, p1ScoreBuffer);
-    P2Score.SetTransform(p2position, p2ScoreBuffer);
-
-    P1Score.UpdatePerspective(Camera);
-    P2Score.UpdatePerspective(Camera);
+    P1Score.UpdatePerspective(Perspective);
+    P2Score.UpdatePerspective(Perspective);
 
     Renderer.Render(false);
+}
+
+function UpdateScore(player: 0 | 1)
+{
+    if (++scoreData[player] === 22) return GameOver();
+
+    P1ScorePipeline.WriteBuffer(p1ScoreBuffer, scoreData, scoreBufferOffset, 0, 1);
+    P2ScorePipeline.WriteBuffer(p2ScoreBuffer, scoreData, scoreBufferOffset, 1, 1);
+
+    Renderer.Render(false);
+}
+
+async function GameOver()
+{
+    scoreData[0] = scoreData[0] = 94;
+
+    const GameOverText = new UWAL.MSDFText();
+    await GameOverText.CreateRenderPipeline(Renderer);
+    const gameOverPosition = UWAL.MathUtils.Mat4.translation([0, -0.4, -4]);
+
+    const gameOverBuffer = GameOverText.Write(
+        "Game Over", await GameOverText.LoadFont(Font), 0xffffff, 0.01, true
+    );
+
+    P1ScorePipeline.WriteBuffer(p1ScoreBuffer, scoreData, scoreBufferOffset, 0, 1);
+    P2ScorePipeline.WriteBuffer(p2ScoreBuffer, scoreData, scoreBufferOffset, 1, 1);
+
+    GameOverText.SetTransform(gameOverPosition, gameOverBuffer);
+    GameOverText.UpdatePerspective(Perspective);
+
+    Renderer.Render();
 }
 
 Renderer.Render(Scene);
