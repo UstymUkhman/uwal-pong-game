@@ -17,6 +17,15 @@ const shapeModule = ShapePipeline.CreateShaderModule(UWAL.Shaders.Shape);
 // const { value: Background } = colorAttachments[Symbol.iterator]().next();
 // Background.clearValue = new UWAL.Color(0x800000 /* 0x008000 */).rgba;
 
+let P1ScorePipeline: UWAL.RenderPipeline, p1ScoreBuffer: GPUBuffer;
+let P2ScorePipeline: UWAL.RenderPipeline, p2ScoreBuffer: GPUBuffer;
+
+let scoreBufferOffset = Float32Array.BYTES_PER_ELEMENT * 6 + 2;
+scoreBufferOffset *= Float32Array.BYTES_PER_ELEMENT;
+
+const Perspective = new UWAL.PerspectiveCamera();
+const scoreData = Float32Array.from([12, 12]);
+
 const [width, height] = Renderer.CanvasSize;
 const Camera = new UWAL.Camera2D(Renderer);
 
@@ -106,15 +115,6 @@ Scene.AddCamera(Camera);
     Scene.Add(Player1);
     Scene.Add(Player2);
 }
-
-let P1ScorePipeline: UWAL.RenderPipeline, p1ScoreBuffer: GPUBuffer;
-let P2ScorePipeline: UWAL.RenderPipeline, p2ScoreBuffer: GPUBuffer;
-
-let scoreBufferOffset = Float32Array.BYTES_PER_ELEMENT * 6 + 2;
-scoreBufferOffset *= Float32Array.BYTES_PER_ELEMENT;
-
-const Perspective = new UWAL.PerspectiveCamera();
-const scoreData = Float32Array.from([12, 12]);
 
 /* Score */ {
     const P1Score = new UWAL.MSDFText();
