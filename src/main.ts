@@ -38,9 +38,10 @@ const ballDirection = [0, 0];
 Scene.AddCamera(Camera);
 const playerSpeed = 32;
 const bounds = [0, 0];
+let gameOver = false;
 
-let gameOver = true;
 let ballSpeed = 4;
+let raf: number;
 
 /* Net */ {
     const dots = 32,
@@ -130,12 +131,14 @@ let ballSpeed = 4;
     p2ScoreBuffer = PlayerScore.Write("0", font, 0xffffff);
 }
 
-function render()
+function Render()
 {
     let [dx, dy] = ballDirection;
     const { min, max } = Ball.BoundingBox;
 
-    const [, y] = (Math.sign(dx) + 1 && Player2 || Player1).Position;
+    const y = (Math.sign(dx) + 1 && Player2 || Player1).Position[1];
+    Player2.Position[1] = UWAL.MathUtils.Clamp(Ball.Position[1], ...bounds);
+
     const p1 = (y - bounds[0] <= max[1]) && (min[1] <= y + bounds[0])
         && bounds[0] - playerOffset || 0;
 
@@ -144,16 +147,21 @@ function render()
         if (!p1)
         {
             UpdateScore((Math.sign(dx) + 1) / -2 + 1 as 0 | 1);
-            setTimeout(ResetBallDirection, 1e3);
-
+            Player2.Position[1] = center[1];
+            
             Ball.Position[0] = center[0];
             Ball.Position[1] = center[1];
 
-            ballDirection[0] = dx = 0;
-            ballDirection[1] = dy = 0;
-        }
+            Renderer.Render(false);
+            Renderer.Render(Scene);
 
-        else dx *= -1;
+            return ResetBall();
+        }
+        else
+        {
+            ballSpeed += 2;
+            dx *= -1;
+        }
     }
 
     if (min[1] <= 0 || max[1] >= height) dy *= -1;
@@ -167,10 +175,10 @@ function render()
     Renderer.Render(false);
     Renderer.Render(Scene);
 
-    requestAnimationFrame(render);
+    raf = requestAnimationFrame(Render);
 }
 
-function resize()
+function OnResize()
 {
     Renderer.SetCanvasSize(innerWidth - 64, innerHeight - 24);
     const [newWidth, newHeight] = Renderer.CanvasSize;
@@ -196,18 +204,24 @@ function resize()
 
     PlayerScore.UpdatePerspective(Perspective);
 
-    render();
+    Renderer.Render(false);
+    Renderer.Render(Scene);
 }
 
-function ResetBallDirection()
+function ResetBall()
 {
-    ballDirection[0] = UWAL.MathUtils.Random(-1);
-    ballDirection[1] = UWAL.MathUtils.Random(-1);
+    let x = UWAL.MathUtils.RandomInt(0, 1) * 2 - 1;
+    let y = UWAL.MathUtils.RandomInt(0, 1) * 2 - 1;
+
+    ballDirection[0] = x * UWAL.MathUtils.Random(0.5);
+    ballDirection[1] = y * UWAL.MathUtils.Random(0.5);
+
+    ballSpeed = 4;
 }
 
 function UpdateScore(player: 0 | 1)
 {
-    if (++scoreData[player] === 22) return GameOver();
+    if (++scoreData[player] === 22) return GameOver(scoreData[0] === 22);
     const buffer = player && p2ScoreBuffer || p1ScoreBuffer;
     ScorePipeline.WriteBuffer(buffer, scoreData, scoreBufferOffset, player, 1);
 }
@@ -233,11 +247,19 @@ async function GameOver(win?: boolean)
     GameOverText.SetTransform(gameOverPosition, gameOverBuffer);
     GameOverText.UpdatePerspective(Perspective);
 
+    ShapePipeline.Active = Ball.Visible =
+    Player1.Visible = Player2.Visible = false;
+
     game.classList.add(result);
-    render();
+    cancelAnimationFrame(raf);
+
+    Renderer.Render(false);
+    Renderer.Render(Scene);
+
+    gameOver = true;
 }
 
-function keydown(event: KeyboardEvent)
+function OnKeyDown(event: KeyboardEvent)
 {
     const { Position } = Player1;
     let [, y] = Position;
@@ -245,9 +267,11 @@ function keydown(event: KeyboardEvent)
     switch (event.code)
     {
         case "Space":
-            if (!gameOver) return;
-            ResetBallDirection();
-            gameOver = false;
+            if (gameOver)
+                return location.reload();
+
+            ResetBall();
+            Render();
         break;
 
         case "ArrowUp":
@@ -262,5 +286,5 @@ function keydown(event: KeyboardEvent)
     Position[1] = UWAL.MathUtils.Clamp(y, ...bounds);
 }
 
-addEventListener("keydown", keydown, false);
-addEventListener("resize", resize, false); resize();
+addEventListener("keydown", OnKeyDown, false);
+addEventListener("resize", OnResize, false); OnResize();
