@@ -22,8 +22,8 @@ const { value: Background } = colorAttachments[Symbol.iterator]().next();
 let scoreBufferOffset = Float32Array.BYTES_PER_ELEMENT * 6 + 2;
 scoreBufferOffset *= Float32Array.BYTES_PER_ELEMENT;
 
-const playerOffset = Renderer.DevicePixelRatio * 64;
 const Perspective = new UWAL.PerspectiveCamera();
+let playerOffset = Renderer.CanvasSize[1] / 16;
 const scoreData = Float32Array.from([12, 12]);
 let Player1: UWAL.Shape, Player2: UWAL.Shape;
 
@@ -36,10 +36,11 @@ const Scene = new UWAL.Scene();
 const ballDirection = [0, 0];
 
 Scene.AddCamera(Camera);
-const playerSpeed = 32;
+const playerSpeed = 16;
 const bounds = [0, 0];
 let gameOver = false;
 
+let direction = 0;
 let ballSpeed = 4;
 let raf: number;
 
@@ -104,24 +105,6 @@ let raf: number;
     Scene.Add(Ball);
 }
 
-/* Players */ {
-    const radius = height / 8;
-    bounds[1] = height - (bounds[0] = radius / Math.sqrt(2));
-    const PlayerGeometry = new UWAL.Geometries.Shape({ radius });
-
-    Player1 = new UWAL.Shape(PlayerGeometry);
-    Player2 = new UWAL.Shape(PlayerGeometry);
-
-    Player1.SetRenderPipeline(ShapePipeline);
-    Player2.SetRenderPipeline(ShapePipeline);
-
-    Player1.Rotation = Math.PI / 4;
-    Player2.Rotation = Math.PI / 4;
-
-    Scene.Add(Player1);
-    Scene.Add(Player2);
-}
-
 /* Score */ {
     PlayerScore = new UWAL.MSDFText();
     ScorePipeline = await PlayerScore.CreateRenderPipeline(Renderer);
@@ -135,12 +118,16 @@ function Render()
 {
     let [dx, dy] = ballDirection;
     const { min, max } = Ball.BoundingBox;
+    const [width, height] = Renderer.CanvasSize;
 
-    const y = (Math.sign(dx) + 1 && Player2 || Player1).Position[1];
+    let y = (Math.sign(dx) + 1 && Player2 || Player1).Position[1];
     Player2.Position[1] = UWAL.MathUtils.Clamp(Ball.Position[1], ...bounds);
 
     const p1 = (y - bounds[0] <= max[1]) && (min[1] <= y + bounds[0])
         && bounds[0] - playerOffset || 0;
+
+    y = Player1.Position[1] + direction * playerSpeed;
+    Player1.Position[1] = UWAL.MathUtils.Clamp(y, ...bounds);
 
     if (min[0] <= p1 || max[0] >= (width - p1))
     {
@@ -159,7 +146,7 @@ function Render()
         }
         else
         {
-            ballSpeed += 2;
+            ballSpeed = Math.min(ballSpeed + 2, 32);
             dx *= -1;
         }
     }
@@ -180,6 +167,8 @@ function Render()
 
 function OnResize()
 {
+    if (gameOver) return location.reload();
+
     Renderer.SetCanvasSize(innerWidth - 64, innerHeight - 24);
     const [newWidth, newHeight] = Renderer.CanvasSize;
     Perspective.AspectRatio = Renderer.AspectRatio;
@@ -190,19 +179,51 @@ function OnResize()
     center[0] = newWidth / 2;
     center[1] = newHeight / 2;
 
+    const h8  = newHeight / 8;
+    const h16 = newHeight / 16;
+    const h64 = newHeight / 64;
+
     Ball.Position = center;
-    Net.Position = [center[0], center[1] - 15];
+    Net.Position = [center[0], center[1] - h64];
 
-    Player1.Position = [         - playerOffset, center[1]];
-    Player2.Position = [newWidth + playerOffset, center[1]];
+    /* Players */ {
+        const radius = h8;
+        playerOffset = h16;
 
-    const p1Position = UWAL.MathUtils.Mat4.translation([newWidth / -640, 1.6, -4]);
-    const p2Position = UWAL.MathUtils.Mat4.translation([newWidth /  832, 1.6, -4]);
+        if (Player1 && Player2)
+        {
+            Scene.Remove([Player1, Player2]);
+            Player1.Destroy(); Player2.Destroy();
+        }
 
-    PlayerScore.SetTransform(p1Position, p1ScoreBuffer);
-    PlayerScore.SetTransform(p2Position, p2ScoreBuffer);
+        bounds[1] = newHeight - (bounds[0] = radius / Math.sqrt(2));
+        const PlayerGeometry = new UWAL.Geometries.Shape({ radius });
 
-    PlayerScore.UpdatePerspective(Perspective);
+        Player1 = new UWAL.Shape(PlayerGeometry);
+        Player2 = new UWAL.Shape(PlayerGeometry);
+
+        Player1.SetRenderPipeline(ShapePipeline);
+        Player2.SetRenderPipeline(ShapePipeline);
+
+        Player1.Position = [         - playerOffset, center[1]];
+        Player2.Position = [newWidth + playerOffset, center[1]];
+
+        Player1.Rotation = Math.PI / 4;
+        Player2.Rotation = Math.PI / 4;
+
+        Scene.Add(Player1);
+        Scene.Add(Player2);
+    }
+
+    /* Score */ {
+        const p1Position = UWAL.MathUtils.Mat4.translation([newWidth / -696, 1.6, -4]);
+        const p2Position = UWAL.MathUtils.Mat4.translation([newWidth /  960, 1.6, -4]);
+
+        PlayerScore.SetTransform(p1Position, p1ScoreBuffer);
+        PlayerScore.SetTransform(p2Position, p2ScoreBuffer);
+
+        PlayerScore.UpdatePerspective(Perspective);
+    }
 
     Renderer.Render(false);
     Renderer.Render(Scene);
@@ -261,30 +282,31 @@ async function GameOver(win?: boolean)
 
 function OnKeyDown(event: KeyboardEvent)
 {
-    const { Position } = Player1;
-    let [, y] = Position;
-
     switch (event.code)
     {
         case "Space":
             if (gameOver)
                 return location.reload();
 
-            ResetBall();
-            Render();
+            if (
+                Ball.Position[0] === center[0] &&
+                Ball.Position[1] === center[1]
+            ) {
+                ResetBall();
+                Render();
+            }
         break;
 
         case "ArrowUp":
-            y -= playerSpeed;
+            direction = -1;
         break;
 
         case "ArrowDown":
-            y += playerSpeed;
+            direction = 1;
         break;
     }
-
-    Position[1] = UWAL.MathUtils.Clamp(y, ...bounds);
 }
 
 addEventListener("keydown", OnKeyDown, false);
+addEventListener("keyup", () => direction = 0, false);
 addEventListener("resize", OnResize, false); OnResize();
