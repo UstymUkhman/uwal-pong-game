@@ -23,7 +23,6 @@ let scoreBufferOffset = Float32Array.BYTES_PER_ELEMENT * 6 + 2;
 scoreBufferOffset *= Float32Array.BYTES_PER_ELEMENT;
 
 const Perspective = new UWAL.PerspectiveCamera();
-let playerOffset = Renderer.CanvasSize[1] / 16;
 const scoreData = Float32Array.from([12, 12]);
 let Player1: UWAL.Shape, Player2: UWAL.Shape;
 
@@ -34,6 +33,7 @@ let Ball: UWAL.Shape, Net: UWAL.Shape;
 
 const Scene = new UWAL.Scene();
 const ballDirection = [0, 0];
+const playerOffset = [0, 0];
 
 Scene.AddCamera(Camera);
 const playerSpeed = 16;
@@ -43,6 +43,7 @@ let gameOver = false;
 let direction = 0;
 let ballSpeed = 4;
 let raf: number;
+let delay = 60;
 
 /* Net */ {
     const dots = 32,
@@ -121,10 +122,8 @@ function Render()
     const [width, height] = Renderer.CanvasSize;
 
     let y = (Math.sign(dx) + 1 && Player2 || Player1).Position[1];
-    Player2.Position[1] = UWAL.MathUtils.Clamp(Ball.Position[1], ...bounds);
-
     const p1 = (y - bounds[0] <= max[1]) && (min[1] <= y + bounds[0])
-        && bounds[0] - playerOffset || 0;
+        && bounds[0] - playerOffset[0] || 0;
 
     y = Player1.Position[1] + direction * playerSpeed;
     Player1.Position[1] = UWAL.MathUtils.Clamp(y, ...bounds);
@@ -152,6 +151,20 @@ function Render()
     }
 
     if (min[1] <= 0 || max[1] >= height) dy *= -1;
+
+    if (0 < delay && !--delay)
+    {
+        playerOffset[1] = Player2.Position[1] - Ball.Position[1];
+
+        setTimeout(() =>
+            delay = UWAL.MathUtils.RandomInt(4, ballSpeed),
+            UWAL.MathUtils.RandomInt(16384, 32768)
+        );
+    }
+    else if (!delay)
+        Player2.Position[1] = UWAL.MathUtils.Clamp(
+            Ball.Position[1] + playerOffset[1], ...bounds
+        );
 
     Ball.Position[0] += dx * ballSpeed;
     Ball.Position[1] += dy * ballSpeed;
@@ -188,7 +201,7 @@ function OnResize()
 
     /* Players */ {
         const radius = h8;
-        playerOffset = h16;
+        playerOffset[0] = h16;
 
         if (Player1 && Player2)
         {
@@ -205,8 +218,8 @@ function OnResize()
         Player1.SetRenderPipeline(ShapePipeline);
         Player2.SetRenderPipeline(ShapePipeline);
 
-        Player1.Position = [         - playerOffset, center[1]];
-        Player2.Position = [newWidth + playerOffset, center[1]];
+        Player1.Position = [         - h16, center[1]];
+        Player2.Position = [newWidth + h16, center[1]];
 
         Player1.Rotation = Math.PI / 4;
         Player2.Rotation = Math.PI / 4;
@@ -237,7 +250,8 @@ function ResetBall()
     ballDirection[0] = x * UWAL.MathUtils.Random(0.5);
     ballDirection[1] = y * UWAL.MathUtils.Random(0.5);
 
-    ballSpeed = 4;
+    ballSpeed = delay = 4;
+    playerOffset[1] = 0;
 }
 
 function UpdateScore(player: 0 | 1)
@@ -288,10 +302,9 @@ function OnKeyDown(event: KeyboardEvent)
             if (gameOver)
                 return location.reload();
 
-            if (
-                Ball.Position[0] === center[0] &&
-                Ball.Position[1] === center[1]
-            ) {
+            if (Ball.Position[0] === center[0] &&
+                Ball.Position[1] === center[1])
+            {
                 ResetBall();
                 Render();
             }

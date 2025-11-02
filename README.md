@@ -2,6 +2,8 @@
 
 > Classic Pong Game in [UWAL](https://github.com/UstymUkhman/uwal) and [WebGPU](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API)
 
+[![](./public/preview.jpg)](https://ustymukhman.github.io/uwal-pong-game/dist/)
+
 <!-- [![Pong Game]()]() -->
 
 ## Download
