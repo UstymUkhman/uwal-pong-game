@@ -22,6 +22,7 @@ const { value: Background } = colorAttachments[Symbol.iterator]().next();
 let scoreBufferOffset = Float32Array.BYTES_PER_ELEMENT * 6 + 2;
 scoreBufferOffset *= Float32Array.BYTES_PER_ELEMENT;
 
+const Material = new UWAL.Materials.Color(0xffffff);
 const Perspective = new UWAL.PerspectiveCamera();
 const scoreData = Float32Array.from([12, 12]);
 let Player1: UWAL.Shape, Player2: UWAL.Shape;
@@ -75,7 +76,7 @@ let delay = 60;
         ], void 0, "textureVertex")
     });
 
-    Net = new UWAL.Shape(Geometry);
+    Net = new UWAL.Shape(Geometry, Material);
     Net.SetRenderPipeline(NetPipeline);
 
     Net.Rotation = Math.PI / 4;
@@ -100,7 +101,7 @@ let delay = 60;
         )
     });
 
-    Ball = new UWAL.Shape(BallGeometry);
+    Ball = new UWAL.Shape(BallGeometry, Material);
     Ball.SetRenderPipeline(ShapePipeline);
 
     Scene.Add(Ball);
@@ -109,10 +110,10 @@ let delay = 60;
 /* Score */ {
     PlayerScore = new UWAL.MSDFText();
     ScorePipeline = await PlayerScore.CreateRenderPipeline(Renderer);
-    const font = await PlayerScore.LoadFont(Font);
+    await PlayerScore.LoadFont(Font);
 
-    p1ScoreBuffer = PlayerScore.Write("0", font, 0xffffff);
-    p2ScoreBuffer = PlayerScore.Write("0", font, 0xffffff);
+    p1ScoreBuffer = PlayerScore.Write("0", 0xffffff);
+    p2ScoreBuffer = PlayerScore.Write("0", 0xffffff);
 }
 
 function Render()
@@ -212,8 +213,8 @@ function OnResize()
         bounds[1] = newHeight - (bounds[0] = radius / Math.sqrt(2));
         const PlayerGeometry = new UWAL.Geometries.Shape({ radius });
 
-        Player1 = new UWAL.Shape(PlayerGeometry);
-        Player2 = new UWAL.Shape(PlayerGeometry);
+        Player1 = new UWAL.Shape(PlayerGeometry, Material);
+        Player2 = new UWAL.Shape(PlayerGeometry, Material);
 
         Player1.SetRenderPipeline(ShapePipeline);
         Player2.SetRenderPipeline(ShapePipeline);
@@ -268,16 +269,15 @@ async function GameOver(win?: boolean)
 
     const GameOverText = new UWAL.MSDFText();
     await GameOverText.CreateRenderPipeline(Renderer);
-    const gameOverPosition = UWAL.MathUtils.Mat4.translation([0, -0.4, -4]);
+    await GameOverText.LoadFont(Font);
 
-    const gameOverBuffer = GameOverText.Write(
-        `Game Over\nYou ${result}!`, await GameOverText.LoadFont(Font), 0xffffff, 0.01, true
-    );
+    const gameOverBuffer = GameOverText.Write(`Game Over\nYou ${result}!`, 0xffffff, 0.01, true);
 
     ScorePipeline.WriteBuffer(p1ScoreBuffer, scoreData, scoreBufferOffset, 0, 1);
     ScorePipeline.WriteBuffer(p2ScoreBuffer, scoreData, scoreBufferOffset, 1, 1);
 
-    Background.clearValue = background.Set(win && 0x008000 || 0x800000).rgba;
+    Background!.clearValue = background.Set(win && 0x008000 || 0x800000).rgba;
+    const gameOverPosition = UWAL.MathUtils.Mat4.translation([0, -0.4, -4]);
 
     GameOverText.SetTransform(gameOverPosition, gameOverBuffer);
     GameOverText.UpdatePerspective(Perspective);
